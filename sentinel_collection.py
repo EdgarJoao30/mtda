@@ -1,5 +1,6 @@
 import geopandas as gpd
 import s2_functions as s2f
+import s1_functions as s1f
 
 aoi = gpd.read_file('../../2_data/Koumbia_db/Koumbia_JECAM_2018-20-21.shp')
 aoi = aoi.to_crs('EPSG: 4326')
@@ -18,6 +19,13 @@ class s2:
         self.stack, self.bbox_cloud_cover, self.SCL, self.mask = s2f.getReducedStack(self.cloud_cover, self.time)
         self.doy = s2f.getDOY(self.stack)
         
+class s1:
+    bbox = bbox
 
+    def __init__(self, year = year, bbox = bbox): 
+        self.bbox = bbox
+        self.time = year + '-01-01/' + year + '-12-31'
+        self.stack = s1f.getStack(self.time)
+        self.doy = s1f.getDOY(self.stack)
 
 
