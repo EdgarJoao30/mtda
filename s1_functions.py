@@ -7,7 +7,7 @@ import numpy as np
 
 aoi = gpd.read_file('../../2_data/Koumbia_db/Koumbia_JECAM_2018-20-21.shp')
 aoi = aoi.to_crs('EPSG: 4326')
-bbox = aoi.total_bounds
+bbox = aoi.total_bounds # add buffer
 year = '2018'
 time = year + '-01-01/' + year + '-12-31'
 
@@ -32,7 +32,8 @@ def getSearch(bbox = bbox, time = time): # Searches All s2 collection only based
         collections=["sentinel-1-rtc"],
         bbox=bbox,
         datetime=time,
-        query={"sat:orbit_state": {"eq": 'ascending'}}
+        query={"sat:orbit_state": {"eq": 'ascending'},
+                'platform': {'eq': 'SENTINEL-1A'}}
         )
         return s1_search
 
