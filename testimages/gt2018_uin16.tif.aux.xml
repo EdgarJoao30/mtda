@@ -1,0 +1,16 @@
+<PAMDataset>
+  <Metadata>
+    <MDI key="long_name">CodeL2</MDI>
+    <MDI key="name">CodeL2</MDI>
+  </Metadata>
+  <PAMRasterBand band="1">
+    <Description>CodeL2</Description>
+    <Metadata>
+      <MDI key="STATISTICS_MAXIMUM">5</MDI>
+      <MDI key="STATISTICS_MEAN">4.7064220183486</MDI>
+      <MDI key="STATISTICS_MINIMUM">4</MDI>
+      <MDI key="STATISTICS_STDDEV">0.45540086774278</MDI>
+      <MDI key="STATISTICS_VALID_PERCENT">1.09</MDI>
+    </Metadata>
+  </PAMRasterBand>
+</PAMDataset>
