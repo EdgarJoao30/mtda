@@ -40,22 +40,18 @@ def extract_ts(geometry_path, bands, year, subset, output_path):
             )
     item = search.item_collection()
     time_steps_pc = len(item)
-    
-    if subset == 'yes':
-        bbox = [415000, 1240000, 415000+1000, 1240000+1000]
-    else:    
-        bbox = aoi.total_bounds
         
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if subset == 'yes':
-            stack = stackstac.stack(item, resolution = 10, bounds = bbox, chunksize= (time_steps_pc, 1, 100, 100))
+            bbox = [415000, 1240000, 415000+1000, 1240000+1000]
+            stack = stackstac.stack(item, resolution = 10, bounds = bbox, chunksize= (time_steps_pc, 1, 100, 100), xy_coords= 'center')
         else:    
-            stack = stackstac.stack(item, resolution = 10, bounds = bbox, chunksize= (time_steps_pc, 1, 'auto', 'auto'))
+            bbox = aoi.total_bounds
+            stack = stackstac.stack(item, resolution = 10, bounds = bbox, chunksize= (time_steps_pc, 1, 'auto', 'auto'), xy_coords= 'center')
     
     stack = stack.drop_duplicates(dim = 'time')
     SCL = stack.sel(band = 'SCL')
-    stack = stack.sel(band = bands)
 
     cirrus = xr.where(SCL == 10, 1, 0) # cirrus pixels, binary mask 0, 1
     highclouds = xr.where(SCL == 9, 1, 0) # High probability clouds, binary mask 0, 1
@@ -65,6 +61,8 @@ def extract_ts(geometry_path, bands, year, subset, output_path):
     saturated = xr.where(SCL == 1, 1, 0) # saturated pixels, binary mask 0, 1
 
     mask = highclouds + medclouds + shaclouds + saturated + cirrus + unclass # Mask, binary mask 0, 1
+    
+    stack = stack.sel(band = bands)
     maskedstack = stack.where(mask == 0, np.nan)
     
     print('Masking collection complete')
@@ -74,55 +72,52 @@ def extract_ts(geometry_path, bands, year, subset, output_path):
     missing_idx = np.setdiff1d(np.arange(5, 370, 5) / 5, pc_idx)
     n_missing = missing_idx.shape[0]
     
-    pcdata = np.array(maskedstack.values)
+    for band in tqdm(bands):
+        print('Starting loading band: {}'.format(band))
+        pcdata = np.array(maskedstack.sel(band = band).values)
     
-    print('Loading images into memory complete')
+        print('Loading band {} into memory complete'.format(band))
     
-    n_bands = pcdata.shape[1]
-    n_y = pcdata.shape[2]
-    n_x = pcdata.shape[3]
-    nandata = np.array([np.nan]*n_missing*n_bands*n_y*n_x).reshape(n_missing, n_bands, n_y, n_x)
-    completets = np.zeros((73, n_bands, n_y, n_x))
+        n_y = pcdata.shape[1]
+        n_x = pcdata.shape[2]
+        nandata = np.array([np.nan]*n_missing*n_y*n_x).reshape(n_missing, n_y, n_x)
+        completets = np.zeros((73, n_y, n_x))
+        
+        for n, i in enumerate(pc_idx):
+            completets[int(i)-1, :, :] = pcdata[n, :, :]
+        
+        for n, i in enumerate(missing_idx):
+            completets[int(i)-1, :, :] = nandata[n, :, :]
+        
+        print('Band: {} - Complete TS in numpy'.format(band))
     
-    for n, i in enumerate(pc_idx):
-        completets[int(i)-1, :, :, :] = pcdata[n, :, :, :]
+        x = maskedstack.indexes['x']
+        y = maskedstack.indexes['y']
+        dates = [pd.to_datetime(doy-1, unit='D', origin=str(2018)) for doy in np.arange(5, 370, 5)]
+        time = pd.Index(dates, name = 'time')
     
-    for n, i in enumerate(missing_idx):
-        completets[int(i)-1, :, :, :] = nandata[n, :, :, :]
+        completets = xr.DataArray(
+            data = completets,
+            coords=dict(time = time,
+                        y = y,
+                        x = x)
+            )
+        completets._copy_attrs_from(maskedstack)
     
-    print('Complete TS in numpy')
+        print('Band: {} - Complete TS in DataArray'.format(band))
     
-    x = maskedstack.indexes['x']
-    y = maskedstack.indexes['y']
-    band = maskedstack.indexes['band']
-    dates = [pd.to_datetime(doy-1, unit='D', origin=str(2018)) for doy in np.arange(5, 370, 5)]
-    time = pd.Index(dates, name = 'time')
+        interpolated = completets.interpolate_na(dim="time", method="linear", use_coordinate = 'time')
+        interpolated.data = interpolated.data.astype(np.uint16)
+        print('Band: {} - Interpolation complete'.format(band))
     
-    completets = xr.DataArray(
-        data = completets,
-        coords=dict(time = time,
-                    band = band,
-                    y = y,
-                    x = x)
-        )
-    completets._copy_attrs_from(maskedstack)
+        # minmax_bandtime = interpolated.quantile([0.02, 0.98], dim=['x', 'y'])
+        # normalized = (interpolated - minmax_bandtime[0, :, :]) / (minmax_bandtime[1, :, :] - minmax_bandtime[0, :, :])
+        # normalized = normalized.where(normalized > 0, 0, drop=True)
+        # normalized = normalized.where(normalized < 1, 1, drop=True)
     
-    print('Complete TS in DataArray')
+        print('Band: {} - Starting writing tif file'.format(band))
     
-    interpolated = completets.interpolate_na(dim="time", method="linear", use_coordinate = 'time')
-    
-    print('Interpolation complete')
-    
-    minmax_bandtime = interpolated.quantile([0.02, 0.98], dim=['x', 'y'])
-    normalized = (interpolated - minmax_bandtime[0, :, :]) / (minmax_bandtime[1, :, :] - minmax_bandtime[0, :, :])
-    normalized = normalized.where(normalized > 0, 0, drop=True)
-    normalized = normalized.where(normalized < 1, 1, drop=True)
-    
-    print('Normalization complete')
-    
-    for t in tqdm(np.arange(0, 73, 1)):
-        for b in np.arange(0, 10, 1):
-            normalized[t, b, :, :].rio.to_raster("{}s2_{}_{}.tif".format(output_path, time[t].strftime('%Y%m%d'), bands[b]))
+        interpolated.rio.to_raster("{}s2_{}_{}.tif".format(output_path, year, band))
     
     
 if __name__ == "__main__":
@@ -144,7 +139,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bands",
         type=list,
-        default=['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12'],
+        default=['B11', 'B12'],
     )
     
     parser.add_argument(
