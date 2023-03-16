@@ -53,14 +53,15 @@ def extract_ts(geometry_path, bands, year, subset, output_path):
     stack = stack.drop_duplicates(dim = 'time')
     SCL = stack.sel(band = 'SCL')
 
-    cirrus = xr.where(SCL == 10, 1, 0) # cirrus pixels, binary mask 0, 1
-    highclouds = xr.where(SCL == 9, 1, 0) # High probability clouds, binary mask 0, 1
-    medclouds = xr.where(SCL == 8, 1, 0) # Medium probability clouds, binary mask 0, 1
-    unclass = xr.where(SCL == 7, 1, 0) # unclassified pixels, binary mask 0, 1
-    shaclouds = xr.where(SCL == 3, 1, 0) # Cloud shadows, binary mask 0, 1
+    nodatapixel = xr.where(SCL == 0, 1, 0) # cirrus pixels, binary mask 0, 1
     saturated = xr.where(SCL == 1, 1, 0) # saturated pixels, binary mask 0, 1
+    shaclouds = xr.where(SCL == 3, 1, 0) # Cloud shadows, binary mask 0, 1
+    unclass = xr.where(SCL == 7, 1, 0) # unclassified pixels, binary mask 0, 1
+    medclouds = xr.where(SCL == 8, 1, 0) # Medium probability clouds, binary mask 0, 1
+    highclouds = xr.where(SCL == 9, 1, 0) # High probability clouds, binary mask 0, 1
+    cirrus = xr.where(SCL == 10, 1, 0) # cirrus pixels, binary mask 0, 1
 
-    mask = highclouds + medclouds + shaclouds + saturated + cirrus + unclass # Mask, binary mask 0, 1
+    mask = highclouds + medclouds + shaclouds + saturated + cirrus + unclass + nodatapixel # Mask, binary mask 0, 1
     
     stack = stack.sel(band = bands)
     maskedstack = stack.where(mask == 0, np.nan)
@@ -139,7 +140,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bands",
         type=list,
-        default=['B11', 'B12'],
+        #['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12']
+        default=['B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12'],
     )
     
     parser.add_argument(
