@@ -108,6 +108,7 @@ def extract_ts(geometry_path, bands, year, subset, output_path):
         print('Band: {} - Complete TS in DataArray'.format(band))
     
         interpolated = completets.interpolate_na(dim="time", method="linear", use_coordinate = 'time')
+        interpolated = interpolated.ffill(dim= 'time')
         interpolated.data = interpolated.data.astype(np.uint16)
         print('Band: {} - Interpolation complete'.format(band))
     
@@ -141,7 +142,7 @@ if __name__ == "__main__":
         "--bands",
         type=list,
         #['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12']
-        default=['B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12'],
+        default=['B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B11', 'B12'],
     )
     
     parser.add_argument(
