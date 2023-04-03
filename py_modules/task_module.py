@@ -40,10 +40,18 @@ class ClassifyTimeSeries(pl.LightningModule):
             self.val_loss = MeanMetric()
             
         elif stage == "test":
-            self.test_epoch_loss, self.test_epoch_metrics = None, None
-            self.test_metrics = MetricCollection([MulticlassF1Score(num_classes=self.num_classes,average='weighted'),
+            self.test2018_epoch_loss, self.test2018_epoch_metrics = None, None
+            self.test2020_epoch_loss, self.test2020_epoch_metrics = None, None
+            self.test2021_epoch_loss, self.test2021_epoch_metrics = None, None
+            self.test2018_metrics = MetricCollection([MulticlassF1Score(num_classes=self.num_classes,average='weighted'),
                                                    MulticlassAccuracy(num_classes=self.num_classes, average='weighted')])
-            self.test_loss = MeanMetric()
+            self.test2020_metrics = MetricCollection([MulticlassF1Score(num_classes=self.num_classes,average='weighted'),
+                                                   MulticlassAccuracy(num_classes=self.num_classes, average='weighted')])
+            self.test2021_metrics= MetricCollection([MulticlassF1Score(num_classes=self.num_classes,average='weighted'),
+                                                   MulticlassAccuracy(num_classes=self.num_classes, average='weighted')])
+            self.test2018_loss = MeanMetric()
+            self.test2020_loss = MeanMetric()
+            self.test2021_loss = MeanMetric()
 
     def forward(self, input_im):
         logits = self.model(input_im)
@@ -71,92 +79,63 @@ class ClassifyTimeSeries(pl.LightningModule):
         self.val_metrics(preds, targets)
         return loss
     
-    def test_step(self, batch, batch_idx):
-        loss, preds, targets = self.step(batch)
-        self.test_loss.update(loss)
-        self.test_metrics(preds, targets)
-        return loss
-    
+    def test_step(self, batch, batch_idx, dataloader_idx):
+        if dataloader_idx == 0:
+            loss, preds, targets = self.step(batch)
+            self.test2018_loss.update(loss)
+            self.test2018_metrics(preds, targets)
+            return loss
+        elif dataloader_idx ==1:
+            loss, preds, targets = self.step(batch)
+            self.test2020_loss.update(loss)
+            self.test2020_metrics(preds, targets)
+            return loss
+        elif dataloader_idx ==2:
+            loss, preds, targets = self.step(batch)
+            self.test2021_loss.update(loss)
+            self.test2021_metrics(preds, targets)
+            return loss
+        
     def on_train_epoch_end(self):
         self.train_epoch_loss = self.train_loss.compute()
         self.train_epoch_metrics = self.train_metrics.compute()
-        self.log(
-            "train_epoch_loss",
-            self.train_epoch_loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            rank_zero_only=True,
-        )
+        self.log("train_loss",self.train_epoch_loss,on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
         self.train_loss.reset()
         self.train_metrics.reset()
         
     def on_validation_epoch_end(self):
         self.val_epoch_loss = self.val_loss.compute()
         self.val_epoch_metrics = self.val_metrics.compute()
-        self.log(
-            "val_loss",
-            self.val_epoch_loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            rank_zero_only=True,
-        )
-        self.log(
-            "val_MulticlassF1Score",
-            self.val_epoch_metrics['MulticlassF1Score'],
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            rank_zero_only=True,
-        )
-        self.log(
-            "val_MulticlassAccuracy",
-            self.val_epoch_metrics['MulticlassAccuracy'],
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            rank_zero_only=True,
-        )
+        self.log("val_loss",self.val_epoch_loss,on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
+        self.log("val_MulticlassF1Score",self.val_epoch_metrics['MulticlassF1Score'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
+        self.log("val_MulticlassAccuracy",self.val_epoch_metrics['MulticlassAccuracy'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
         self.val_loss.reset()
         self.val_metrics.reset()
         
     def on_test_epoch_end(self):
-        self.test_epoch_loss = self.test_loss.compute()
-        self.test_epoch_metrics = self.test_metrics.compute()
-        self.log(
-            "test_loss",
-            self.test_epoch_loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            rank_zero_only=True,
-        )
-        self.log(
-            "test_MulticlassF1Score",
-            self.test_epoch_metrics['MulticlassF1Score'],
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            rank_zero_only=True,
-        )
-        self.log(
-            "test_MulticlassAccuracy",
-            self.test_epoch_metrics['MulticlassAccuracy'],
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            rank_zero_only=True,
-        )
-        self.test_loss.reset()
-        self.test_metrics.reset()        
+        self.test_epoch_loss = self.test2018_loss.compute()
+        self.test_epoch_metrics = self.test2018_metrics.compute()
+        self.log("test2018_loss", self.test_epoch_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        self.log("test2018_MulticlassF1Score",self.test_epoch_metrics['MulticlassF1Score'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
+        self.log( "test2018_MulticlassAccuracy",self.test_epoch_metrics['MulticlassAccuracy'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
+        self.test2018_loss.reset()
+        self.test2018_metrics.reset()      
+        
+        self.test_epoch_loss = self.test2020_loss.compute()
+        self.test_epoch_metrics = self.test2020_metrics.compute()
+        self.log("test2020_loss", self.test_epoch_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        self.log("test2020_MulticlassF1Score",self.test_epoch_metrics['MulticlassF1Score'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
+        self.log( "test2020_MulticlassAccuracy",self.test_epoch_metrics['MulticlassAccuracy'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
+        self.test2020_loss.reset()
+        self.test2020_metrics.reset()  
+        
+        self.test_epoch_loss = self.test2021_loss.compute()
+        self.test_epoch_metrics = self.test2021_metrics.compute()
+        self.log("test2021_loss", self.test_epoch_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True, rank_zero_only=True)
+        self.log("test2021_MulticlassF1Score",self.test_epoch_metrics['MulticlassF1Score'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
+        self.log( "test2021_MulticlassAccuracy",self.test_epoch_metrics['MulticlassAccuracy'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
+        self.test2021_loss.reset()
+        self.test2021_metrics.reset()    
 
 
     # def predict_step(self, batch):
