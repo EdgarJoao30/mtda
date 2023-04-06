@@ -89,10 +89,10 @@ class ClassifyTimeSeries(pl.LightningModule):
         loss_class = self.criterion(source_logits_class, source_y)
         # Calculate loss on domain prediction
         loss_dom = self.criterion(torch.cat([source_logits_dom, target_logits_dom]), domain_y.type(torch.long).to(self.device))
-        # Calculation of loss on pseudo-labels on source domain
+        # Calculate loss on pseudo-labels on target domain
         loss_pseudo = self.criterion_pseudo(target_logits_class, torch.tensor(target_pred))
         loss_pseudo = torch.mean(loss_pseudo * torch.tensor(result).to(self.device))
-        # Calculation of combined loss
+        # Calculate combined loss
         loss_combined = (1 - alpha) * (loss_class + loss_dom) + alpha * loss_pseudo
         
         self.train_in_loss.update(loss_class)
