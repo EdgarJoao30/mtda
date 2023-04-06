@@ -70,12 +70,12 @@ class ClassifyTimeSeries(pl.LightningModule):
         source_X, source_y, target_X = batch[0], batch[1] -1, batch[2]
         # forward pass
         _, source_logits_class, source_logits_dom = self.forward(source_X, lamb_da)
-        _, out_logits_class, out_logits_dom = self.forward(target_X, lamb_da)
+        _, target_logits_class, target_logits_dom = self.forward(target_X, lamb_da)
         # Create domain labels
         domain_y = torch.cat([torch.ones(batch[0].shape[0]), torch.zeros(batch[2].shape[0])])
         # Probabilities
         source_proba_class = torch.softmax(source_logits_class, dim=1)
-        target_proba_class = torch.softmax(out_logits_class, dim=1)
+        target_proba_class = torch.softmax(target_logits_class, dim=1)
         # Predictions
         with torch.no_grad():
             source_pred = torch.argmax(source_proba_class, axis=1)
@@ -88,9 +88,9 @@ class ClassifyTimeSeries(pl.LightningModule):
         # Calculate loss on label prediction on source domain
         loss_class = self.criterion(source_logits_class, source_y)
         # Calculate loss on domain prediction
-        loss_dom = self.criterion(torch.cat([source_logits_dom, out_logits_dom]), domain_y.type(torch.long).to(self.device))
+        loss_dom = self.criterion(torch.cat([source_logits_dom, target_logits_dom]), domain_y.type(torch.long).to(self.device))
         # Calculation of loss on pseudo-labels on source domain
-        loss_pseudo = self.criterion_pseudo(out_logits_class, torch.tensor(target_pred))
+        loss_pseudo = self.criterion_pseudo(target_logits_class, torch.tensor(target_pred))
         loss_pseudo = torch.mean(loss_pseudo * torch.tensor(result).to(self.device))
         # Calculation of combined loss
         loss_combined = (1 - alpha) * (loss_class + loss_dom) + alpha * loss_pseudo
