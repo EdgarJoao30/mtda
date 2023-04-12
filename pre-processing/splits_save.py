@@ -1,66 +1,76 @@
-import rioxarray
-import xarray as xr
+
 import numpy as np
-from tqdm import tqdm
-from sklearn.model_selection import train_test_split
-import geopandas as gpd
-import glob
+from sklearn.model_selection import StratifiedGroupKFold
 
-c2018 = rioxarray.open_rasterio("/home/edgar/DATA/GTimages/c2018.tif")
-gt_idx = rioxarray.open_rasterio("/home/edgar/DATA/GTimages/polygon_ID.tif")
-geotiff_list = glob.glob('/home/edgar/DATA/Sentinel2images/s2_2018_*.tif')
+def split_data(data_path, year):
+    # Load the data
+    X = np.load(f'{data_path}{year}/{year}_X.npy')
+    y = np.load(f'{data_path}{year}/{year}_y.npy')
+    groups = np.load(f'{data_path}{year}/{year}_groups.npy')
 
-aoi = gpd.read_file('/home/edgar/DATA/Koumbia_db/Koumbia_JECAM_2018-20-21.shp')
-aoi['polygon_ID'] = np.arange(0,len(aoi),1)
-aoi.rename(columns = {'CodeL2':'c2018', '20_CodeL2':'c2020','21_CodeL2':'c2021'}, inplace = True)
-aoi = aoi[['c2018', 'c2020', 'c2021', 'polygon_ID', 'geometry']]
+    sorted_indices = groups.argsort()
 
-train = []
-val = []
-test = []
+    # use the sorted indices to reorder arrays
+    X = X[sorted_indices]
+    y = y[sorted_indices]
+    groups = groups[sorted_indices]
 
-for random_state in range(5):
-    train_temp, test_temp = train_test_split(aoi, test_size=0.3, random_state=random_state, stratify=aoi[['c2018']])
-    train_temp, val_temp = train_test_split(train_temp, test_size=0.2/0.7, random_state=random_state, stratify=train_temp[['c2018']])
-    train.append(train_temp)
-    val.append(val_temp)
-    test.append(test_temp)
+
+    # Define the stratified group k-fold 
+    sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+    sgkf_inner = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=42)
+
+    for i, (train_index, test_index) in enumerate(sgkf.split(X, y, groups)):
+        print(f"Fold {i}:")
+        print(f"  Test:  index={test_index}, size={len(test_index)}, proportion={len(test_index)/len(X)}")
+        print(f"         group={groups[test_index]}")
+        X_test, y_test, groups_test = X[test_index], y[test_index], groups[test_index]
+        for n, (train_index, val_index) in enumerate(sgkf_inner.split(X[train_index], y[train_index], groups[train_index])):
+            if n == 0:
+                print(f"Fold {i}:")
+                print(f"  Train: index={train_index}, size={len(train_index)}, proportion={len(train_index)/len(X)}")
+                print(f"         group={groups[train_index]}")
+                print(f"  validation:  index={val_index}, size={len(val_index)}, proportion={len(val_index)/len(X)}")
+                print(f"         group={groups[val_index]}")
+                X_val, y_val, groups_val = X[val_index], y[val_index], groups[val_index]
+                X_train, y_train, groups_train = X[train_index], y[train_index], groups[train_index]
+                
+                np.save(f'{data_path}{year}/splits/{year}_x_train_{i}.npy', X_train)
+                np.save(f'{data_path}{year}/splits/{year}_y_train_{i}.npy', y_train)
+                np.save(f'{data_path}{year}/splits/{year}_groups_train_{i}.npy', groups_train)
+                
+                np.save(f'{data_path}{year}/splits/{year}_x_val_{i}.npy', X_val)
+                np.save(f'{data_path}{year}/splits/{year}_y_val_{i}.npy', y_val)
+                np.save(f'{data_path}{year}/splits/{year}_groups_val_{i}.npy', groups_val)
+                
+                np.save(f'{data_path}{year}/splits/{year}_x_test_{i}.npy', X_test)
+                np.save(f'{data_path}{year}/splits/{year}_y_test_{i}.npy', y_test)
+                np.save(f'{data_path}{year}/splits/{year}_groups_test_{i}.npy', groups_test)
+                
+if __name__ == "__main__":
     
+    # parse arguments
+    import argparse
+    from argparse import RawTextHelpFormatter
 
-def extract_samples(path, split):
-    # open file
-    X = rioxarray.open_rasterio(path)
-    # normalization
-    minmax = X.quantile([0.02, 0.98])
-    X = (X - minmax[0]) / (minmax[1] - minmax[0])
-    X = X.where(X > 0, 0)
-    X = X.where(X < 1, 1)
-    # masking pixels 
-    X = X.where(gt_idx.isin(split.index.values).values)
-    # reshape
-    X = np.array(X)
-    X = X[~np.isnan(X)].reshape(73, -1).T
-    return X
+    parser = argparse.ArgumentParser(
+        description="Split time series data",
+        formatter_class=RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default='/home/edgar/DATA/all_data/',
+    )
+    
+    parser.add_argument(
+        "--year",
+        type=str,
+        default='2018',
+    )
+    
+    config = vars(parser.parse_args())
 
-def extract_samples_labels(path, split):
-    X = [extract_samples(path, split) for path in geotiff_list]
-    X = np.hstack(X)
-    X = X.reshape(-1, 10, 73)
-    y = c2018.where(gt_idx.isin(split.index.values))
-    y = np.array(y).flatten()
-    y = y[~np.isnan(y)]
-    return X, y
-
-for n in tqdm(range(5)):
-    X_train, y_train = extract_samples_labels(geotiff_list, train[n])
-    X_val, y_val = extract_samples_labels(geotiff_list, val[n])
-    X_test, y_test = extract_samples_labels(geotiff_list, test[n])
+    # Write splits to disk
+    split_data(**config)
     
-    np.save('/home/edgar/DATA/splits/2018_x_train_{}.npy'.format(n), X_train)
-    np.save('/home/edgar/DATA/splits/2018_y_train_{}.npy'.format(n), y_train)
-    
-    np.save('/home/edgar/DATA/splits/2018_x_val_{}.npy'.format(n), X_val)
-    np.save('/home/edgar/DATA/splits/2018_y_val_{}.npy'.format(n), y_val)
-    
-    np.save('/home/edgar/DATA/splits/2018_x_test_{}.npy'.format(n), X_test)
-    np.save('/home/edgar/DATA/splits/2018_y_test_{}.npy'.format(n), y_test)
