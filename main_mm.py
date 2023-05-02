@@ -11,8 +11,8 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning import Trainer, seed_everything
 
 # custom modules
-from py_module.data_module import Koumbia_DataModule
-from py_module.task_module import ClassifyTimeSeries
+from py_module.data_module_mm import Koumbia_DataModule
+from py_module.task_module_mm import ClassifyTimeSeries
 from py_module.callbacks import get_callbacks
 #from py_module.writer import PredictionWriter
 
@@ -37,7 +37,7 @@ class NN:
         # create save folder if necessary
         self.save_path = Path(self.save_dir, self.wandb_runname)
         os.makedirs(self.save_path, exist_ok=True)
-        #seed_everything(self.seed, workers=False)
+        seed_everything(self.seed, workers=True)
         #callbacks
         self.callbacks = get_callbacks(self.save_path)
         # define wandb session & log model configuration
@@ -79,7 +79,6 @@ class NN:
         elif self.optimiser == "Adam":
             optimiser = torch.optim.Adam(model.parameters(), lr=self.lr) # weight_decay=1e-6
 
-
         TS_module = ClassifyTimeSeries(
             model=model,
             num_classes=8,
@@ -95,7 +94,7 @@ class NN:
             max_epochs=self.max_epochs,
             num_sanity_val_steps=0,
             precision='16-mixed',
-            #deterministic="warn",
+            deterministic="warn",
             callbacks=self.callbacks,
             logger=self.wandb_logger,
             enable_progress_bar=True,
@@ -158,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_name",
         type=str,
-        default="TempCNN",
+        default="mmTempCNN",
         help="see model.py for avaliable models",
     )
     parser.add_argument(
@@ -182,7 +181,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--lr", 
         type=float, 
-        default=1e-4
+        default=1e-3
     )
     parser.add_argument(
         "--max_epochs",
@@ -207,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wandb_project", 
         type=str, 
-        default="ts_classification"
+        default="test_mm_v1"
     )
     parser.add_argument(
         "--wandb_runname",

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import os
 import torch.nn.functional as F
+import pdb
+
 ### https://github.com/dl4sits/BreizhCrops/tree/6de796ed36a457c8520322d6110b8f2862fd8c25/breizhcrops/models
 ### TempCNN
 
@@ -19,11 +21,9 @@ class TempCNN(torch.nn.Module):
         self.flatten = Flatten()
         self.dense = FC_BatchNorm_Relu_Dropout(4 * hidden_dims, drop_probability=dropout)
         self.linear = nn.LazyLinear(num_classes)
-        #self.logsoftmax = nn.Sequential(nn.Linear(4 * hidden_dims, num_classes), nn.LogSoftmax(dim=-1))
 
     def forward(self, x):
         # require NxTxD
-        #x = x.transpose(1,2)
         x = self.conv_bn_relu1(x)
         x = self.conv_bn_relu2(x)
         x = self.conv_bn_relu3(x)
@@ -31,19 +31,80 @@ class TempCNN(torch.nn.Module):
         x = self.dense(x)
         return self.linear(x)
 
-    def save(self, path="model.pth", **kwargs):
-        print("\nsaving model to " + path)
-        model_state = self.state_dict()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(dict(model_state=model_state, **kwargs), path)
+class s1TempCNN(torch.nn.Module):
+    def __init__(self, num_classes=8, kernel_size2d=3, hidden_dims=64, dropout=0.5):
+        super(s1TempCNN, self).__init__()
+        self.hidden_dims = hidden_dims
 
-    def load(self, path):
-        print("loading model from " + path)
-        snapshot = torch.load(path, map_location="cpu")
-        model_state = snapshot.pop('model_state', snapshot)
-        self.load_state_dict(model_state)
-        return snapshot
+        
+        self.conv2d_bn_relu1 = Conv2D_BatchNorm_Relu_Dropout(hidden_dims*4, kernel_size=kernel_size2d,
+                                                           drop_probability=dropout)
+        self.conv2d_bn_relu2 = Conv2D_BatchNorm_Relu_Dropout(hidden_dims*4, kernel_size=kernel_size2d,
+                                                           drop_probability=dropout)
+        self.conv2d_bn_relu3 = Conv2D_BatchNorm_Relu_Dropout(hidden_dims*4, kernel_size=kernel_size2d,
+                                                           drop_probability=dropout)
+        
+        self.gap2D =  nn.AdaptiveAvgPool2d(1)
+        
+        self.flatten = Flatten()
+        self.dense = FC_BatchNorm_Relu_Dropout(4 * hidden_dims, drop_probability=dropout)
+        self.linear = nn.LazyLinear(num_classes)
 
+    def forward(self, s1):
+        s1 = self.conv2d_bn_relu1(s1)
+        s1 = self.conv2d_bn_relu2(s1)
+        s1 = self.conv2d_bn_relu3(s1)
+        s1 = self.gap2D(s1)
+        
+        #pdb.set_trace()
+        x = self.dense(torch.squeeze(s1))
+        return self.linear(x)
+
+class mmTempCNN(torch.nn.Module):
+    def __init__(self, num_classes=8, kernel_size1d=5, kernel_size2d=3, hidden_dims=64, dropout=0.5):
+        super(mmTempCNN, self).__init__()
+        self.hidden_dims = hidden_dims
+
+        self.conv1d_bn_relu1 = Conv1D_BatchNorm_Relu_Dropout(hidden_dims, kernel_size=kernel_size1d,
+                                                           drop_probability=dropout)
+        self.conv1d_bn_relu2 = Conv1D_BatchNorm_Relu_Dropout(hidden_dims, kernel_size=kernel_size1d,
+                                                           drop_probability=dropout)
+        self.conv1d_bn_relu3 = Conv1D_BatchNorm_Relu_Dropout(hidden_dims, kernel_size=kernel_size1d,
+                                                           drop_probability=dropout)
+        
+        self.conv2d_bn_relu1 = Conv2D_BatchNorm_Relu_Dropout(hidden_dims*4, kernel_size=kernel_size2d,
+                                                           drop_probability=dropout)
+        self.conv2d_bn_relu2 = Conv2D_BatchNorm_Relu_Dropout(hidden_dims*4, kernel_size=kernel_size2d,
+                                                           drop_probability=dropout)
+        self.conv2d_bn_relu3 = Conv2D_BatchNorm_Relu_Dropout(hidden_dims*4, kernel_size=kernel_size2d,
+                                                           drop_probability=dropout)
+        
+        self.gap2D =  nn.AdaptiveAvgPool2d(1)
+        
+        self.flatten = Flatten()
+        self.dense = FC_BatchNorm_Relu_Dropout(4 * hidden_dims, drop_probability=dropout)
+        self.linear_fused = nn.LazyLinear(num_classes)
+        self.linear_s2 = nn.LazyLinear(num_classes)
+        self.linear_s1= nn.LazyLinear(num_classes)
+
+    def forward(self, s2, s1):
+        # require NxTxD
+        #x = x.transpose(1,2)
+        s2 = self.conv1d_bn_relu1(s2)
+        s2 = self.conv1d_bn_relu2(s2)
+        s2 = self.conv1d_bn_relu3(s2)
+        s2 = self.flatten(s2)
+        
+        s1 = self.conv2d_bn_relu1(s1)
+        s1 = self.conv2d_bn_relu2(s1)
+        s1 = self.conv2d_bn_relu3(s1)
+        s1 = self.gap2D(s1)
+        
+        feats = torch.cat((s2, torch.squeeze(s1) ), dim=1)
+        
+        #pdb.set_trace()
+        x = self.dense(feats)
+        return self.linear_fused(x), self.linear_s2(s2), self.linear_s1(torch.squeeze(s1))
 
 class Conv1D_BatchNorm_Relu_Dropout(torch.nn.Module):
     def __init__(self, hidden_dims, kernel_size=5, drop_probability=0.5):
@@ -52,6 +113,20 @@ class Conv1D_BatchNorm_Relu_Dropout(torch.nn.Module):
         self.block = nn.Sequential(
             nn.LazyConv1d(hidden_dims, kernel_size, padding=(kernel_size // 2)),
             nn.BatchNorm1d(hidden_dims),
+            nn.ReLU(),
+            nn.Dropout(p=drop_probability)
+        )
+
+    def forward(self, X):
+        return self.block(X)
+    
+class Conv2D_BatchNorm_Relu_Dropout(torch.nn.Module):
+    def __init__(self, hidden_dims, kernel_size=3, drop_probability=0.5):
+        super(Conv2D_BatchNorm_Relu_Dropout, self).__init__()
+
+        self.block = nn.Sequential(
+            nn.LazyConv2d(hidden_dims, kernel_size, padding=(kernel_size // 2)),
+            nn.BatchNorm2d(hidden_dims),
             nn.ReLU(),
             nn.Dropout(p=drop_probability)
         )
@@ -190,6 +265,7 @@ class Inception(nn.Module):
         return self.fc(gap_layer)
 
 ### SpADANN
+
 
 class Conv1dBloc(nn.Module):
     """Elementary 1D-convolution block for TempCNN encoder"""

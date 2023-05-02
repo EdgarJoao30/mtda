@@ -79,21 +79,29 @@ class ClassifyTimeSeries(pl.LightningModule):
             self.test2021_cw_metrics= MetricCollection({'F1Score': ClasswiseWrapper(MulticlassF1Score(num_classes=self.num_classes,average='none')),
                                                    'Accuracy': ClasswiseWrapper(MulticlassAccuracy(num_classes=self.num_classes, average='none'))})
 
-    def forward(self, input_im):
-        logits = self.model(input_im)
-        return logits
+
+    def forward(self, s2, s1):
+        fused_logits, s2_logits, s1_logits = self.model(s2, s1)
+        return fused_logits, s2_logits, s1_logits
 
     def step(self, batch):
-        X, targets = batch[0], batch[1] -1
-        logits = self.forward(X)
-        proba = torch.softmax(logits, dim=1)
-        loss = self.criterion(logits, targets)
+        s2, s1, targets = batch[0], batch[1], batch[2] -1
+        fused_logits, s2_logits, s1_logits = self.forward(s2, s1)
+        
+        fused_proba = torch.softmax(fused_logits, dim=1)
+        
+        fused_loss = self.criterion(fused_logits, targets)
+        s2_loss = self.criterion(s2_logits, targets)
+        s1_loss = self.criterion(s1_logits, targets)
+        
+        combined_loss = fused_loss + (0.3*s2_loss) + (0.3*s1_loss)
         with torch.no_grad():
-            preds = torch.argmax(proba, dim=1) 
-        return loss, preds, targets
+            preds = torch.argmax(fused_proba, dim=1) 
+        return combined_loss, preds, targets
 
     def training_step(self, batch, batch_idx):
         loss, preds, targets = self.step(batch)
+        
         self.train_loss.update(loss)
         self.train_metrics(preds, targets)
         return loss
@@ -162,7 +170,7 @@ class ClassifyTimeSeries(pl.LightningModule):
             for i in range(self.num_classes):
                 self.log(f"test{year}_F1Score_{i}",epoch_metric[f'multiclassf1score_{i}'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
                 self.log(f"test{year}_Accuracy_{i}",epoch_metric[f'multiclassaccuracy_{i}'],on_step=False,on_epoch=True,prog_bar=True,logger=True,rank_zero_only=True,)
-            metric_year.reset()
+            metric_year.reset()  
 
 
     # def predict_step(self, batch):
@@ -172,5 +180,5 @@ class ClassifyTimeSeries(pl.LightningModule):
     #     return batch
 
     def configure_optimizers(self):
-        
+
         return self.optimizer

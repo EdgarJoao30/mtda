@@ -1,9 +1,10 @@
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LambdaCallback
 from pytorch_lightning.callbacks.progress.tqdm_progress import TQDMProgressBar
 from copy import deepcopy
+import matplotlib.pyplot as plt
 import os
-import numpy as np
 import torch
+import numpy as np
 
 class AccPseudoLabels(LambdaCallback):
     def __init__(self):
@@ -17,7 +18,29 @@ class AccPseudoLabels(LambdaCallback):
         self.y2018 = None
         self.y2020 = None
         self.y2021 = None
+
+    def on_train_epoch_end(self, trainer, pl_module):
         
+        if pl_module.current_epoch == pl_module.max_epochs - 1:
+            self.triggered_train.append(pl_module.current_epoch)
+            # Create a subset of the dataframe with only the proportion columns
+            prop_df = pl_module.pseudo_epoch_evolution[['epoch', 'prop_0', 'prop_1', 'prop_2', 'prop_3', 'prop_4', 'prop_5', 'prop_6', 'prop_7']]
+
+            # Set up figure and axis
+            fig, ax = plt.subplots(figsize=(15, 5))
+
+            # Create stacked bar plot
+            prop_df.plot(kind='bar', stacked=True, x='epoch', ax=ax)
+
+            # Set axis labels and legend
+            ax.set_xlabel('Epoch')
+            ax.set_ylabel('Proportion')
+            ax.set_title('Proportion of Classes over Time')
+            ax.legend(loc='upper left')
+            
+            self.pseudo_evolution_figure = fig
+            self.pseudo_evolution_table = pl_module.pseudo_epoch_evolution
+            
     def on_test_epoch_end(self, trainer, pl_module):
         
         self.triggered_test = 1
@@ -34,11 +57,11 @@ def get_callbacks(path = None):
     else:
         save_path = None
     ckpt_callback = ModelCheckpoint(
-                monitor="val_MulticlassF1Score",
+                monitor="train_combined_loss",
                 dirpath=save_path,
-                filename="ckpt-{epoch:02d}-{val_MulticlassF1Score:.2f}",
+                filename="ckpt-{epoch:02d}-{train_combined_loss:.2f}",
                 save_top_k=1,
-                mode="max",
+                mode="min",
                 save_weights_only=True,
             )
 
